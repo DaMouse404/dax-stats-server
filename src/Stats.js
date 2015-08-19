@@ -1,35 +1,48 @@
 var request = require('request')
+var async = require('async')
+
+var CALL_DELAY = 20000;
 
 function Stats (feeds) {
 	var that = this;
 	that.stored = {};
 
-	feeds.forEach(function (feed) {
-		that.stored[feed.name] = false;
+    async.series(feeds.map(function (feed) {
+        return function (cb) {
+            that.getFeed(feed, cb);
+        };
+	}));
+}
 
-		var timeStart = new Date().getTime();
+Stats.prototype.getFeed = function (feed, cb) {
+    var that = this;
 
-		request(feed.url, function (err, resp, body) {
-			var msg, respErr;
-			if (err) {
-			 	throw err;
-			}
-			respErr = JSON.parse(body);
-			if (resp.statusCode === 400 && respErr && respErr.ERROR && respErr.ERROR === 'No data') {
-				that.stored[feed.name] = [];
-			} else if (resp.statusCode === 200)  {
-				that.stored[feed.name] = JSON.parse(body).reportitems.reportitem[0].rows.r;
-			} else {
-				msg = ''
-				if (respErr && respErr.ERROR)
-					msg = respErr.ERROR;
-				console.error('Error fetching data for ' + feed.name + ' using ' + feed.url  + '. Code: '+resp.statusCode+'. Message: '+msg);
-				return;
-			}
-			var timeEnd = new Date().getTime();
-			console.log('Fetched',feed.name, 'in', timeEnd-timeStart+'ms')
-		});
-	});
+    that.stored[feed.name] = false;
+
+    var timeStart = new Date().getTime();
+    console.log('Requesting',feed.name);
+    request(feed.url, function (err, resp, body) {
+        var msg, respErr;
+        if (err) {
+            throw err;
+        }
+        respErr = JSON.parse(body);
+        if (resp.statusCode === 400 && respErr && respErr.ERROR && respErr.ERROR === 'No data') {
+            that.stored[feed.name] = [];
+        } else if (resp.statusCode === 200)  {
+            that.stored[feed.name] = JSON.parse(body).reportitems.reportitem[0].rows.r;
+        } else {
+            msg = ''
+            if (respErr && respErr.ERROR)
+                msg = respErr.ERROR;
+            console.error('Error fetching data for ' + feed.name + ' using ' + feed.url  + '. Code: '+resp.statusCode+'. Message: '+msg);
+            return;
+        }
+        var timeEnd = new Date().getTime();
+        console.log('Fetched',feed.name, 'in', timeEnd-timeStart+'ms')
+
+        setTimeout(cb, CALL_DELAY);
+    });
 }
 
 Stats.prototype.getStats = function (name) {
